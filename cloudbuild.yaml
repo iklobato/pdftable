@@ -24,3 +24,7 @@ steps:
 
 images:
   - 'gcr.io/$PROJECT_ID/pdf-table-extractor'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+

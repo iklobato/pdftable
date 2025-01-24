@@ -24,17 +24,6 @@ steps:
       - '--ingress=all'
       - '--no-cpu-throttling'
 
-  # - name: 'gcr.io/cloud-builders/gcloud'
-  #   id: 'set-iam-policy'
-  #   args:
-  #     - 'run'
-  #     - 'services'
-  #     - 'add-iam-policy-binding'
-  #     - 'pdf-table-extractor'
-  #     - '--region=us-central1'
-  #     - '--member=allUsers'
-  #     - '--role=roles/run.invoker'
-
 images:
   - 'gcr.io/$PROJECT_ID/pdf-table-extractor'
 

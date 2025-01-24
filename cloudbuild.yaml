@@ -8,19 +8,22 @@ steps:
     args: ['push', 'gcr.io/$PROJECT_ID/pdf-table-extractor']
   
   # Deploy container image to Cloud Run
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: gcloud
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'deploy-app'
     args:
-    - 'run'
-    - 'deploy'
-    - 'pdf-table-extractor'
-    - '--image'
-    - 'gcr.io/$PROJECT_ID/pdf-table-extractor'
-    - '--region'
-    - 'us-central1'
-    - '--platform'
-    - 'managed'
-    - '--allow-unauthenticated'
+      - 'run'
+      - 'deploy'
+      - 'pdf-table-extractor'
+      - '--image=gcr.io/$PROJECT_ID/pdf-table-extractor'
+      - '--region=us-central1'
+      - '--platform=managed'
+      - '--memory=1Gi'
+      - '--cpu=1'
+      - '--min-instances=1'
+      - '--max-instances=10'
+      - '--port=8080'
+      - '--timeout=3600'
+      - '--allow-unauthenticated'
 
 images:
   - 'gcr.io/$PROJECT_ID/pdf-table-extractor'

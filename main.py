@@ -159,5 +159,7 @@ if __name__ == "__main__":
     import uvicorn
     import os
 
+    os.makedirs("static", exist_ok=True)
+
     port = int(os.getenv("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)

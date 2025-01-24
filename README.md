@@ -2,6 +2,9 @@
 
 A professional FastAPI application that extracts tables from PDF files and displays them in a clean, modern interface.
 
+<img width="1498" alt="Screenshot 2025-01-23 at 23 38 42" src="https://github.com/user-attachments/assets/b770321a-32a6-450d-b89f-512570a2dde1" />
+
+
 ## Features
 
 - Drag and drop PDF file upload

@@ -207,15 +207,6 @@
                     `;
 
                     // Add merge all tables button at the top
-                    if (data.tables.length > 1) {
-                        resultsHTML += `
-                            <div class="mb-4">
-                                <button class="btn btn-primary" id="merge-all-btn">
-                                    <i class="fas fa-object-group me-1"></i>Merge All Tables to Excel
-                                </button>
-                            </div>
-                        `;
-                    }
 
                     data.tables.forEach((table, index) => {
                         resultsHTML += `
@@ -273,55 +264,58 @@
                     // Add event listener for merge all tables button
                     const mergeAllBtn = document.getElementById('merge-all-btn');
                     if (mergeAllBtn) {
-                        mergeAllBtn.addEventListener('click', async function() {
-                            try {
-                                // Get data from all tables
-                                const allTables = Array.from(document.querySelectorAll('.table-container')).map(container => {
-                                    const table = container.querySelector('table');
-                                    const tableId = container.querySelector('.table-wrapper').dataset.tableId;
-                                    const headers = Array.from(table.querySelectorAll('th')).map(th => th.textContent.trim());
-                                    const rows = Array.from(table.querySelectorAll('tbody tr')).map(row => {
-                                        const cells = Array.from(row.querySelectorAll('td'));
-                                        return Object.fromEntries(
-                                            headers.map((header, index) => [header, cells[index].textContent.trim()])
-                                        );
-                                    });
-                                    return {
-                                        id: tableId,
-                                        data: rows
-                                    };
-                                });
+                // Replace the merge-tables event listener with this:
+                      mergeAllBtn.addEventListener('click', async function() {
+                          try {
+                              const allTables = Array.from(document.querySelectorAll('.table-container')).map(container => {
+                                  const table = container.querySelector('table');
+                                  const tableId = container.querySelector('.table-wrapper').dataset.tableId;
+                                  const headers = Array.from(table.querySelectorAll('th')).map(th => th.textContent.trim());
+                                  const rows = Array.from(table.querySelectorAll('tbody tr')).map(row => {
+                                      const cells = Array.from(row.querySelectorAll('td'));
+                                      return Object.fromEntries(
+                                          headers.map((header, index) => [header, cells[index].textContent.trim()])
+                                      );
+                                  });
+                                  return {
+                                      id: tableId,
+                                      data: rows
+                                  };
+                              });
 
-                                // Send request to merge tables
-                                const response = await fetch('/merge-tables', {
-                                    method: 'POST',
-                                    headers: {
-                                        'Content-Type': 'application/json'
-                                    },
-                                    body: JSON.stringify(allTables)
-                                });
+                              const response = await fetch('/merge-tables', {
+                                  method: 'POST',
+                                  headers: {
+                                      'Content-Type': 'application/json'
+                                  },
+                                  body: JSON.stringify(allTables)
+                              });
 
-                                const result = await response.json();
-                                if (result.status === 'success') {
-                                    // Create and trigger download of the merged Excel file
-                                    const blob = new Blob([Uint8Array.from(atob(result.excel_data), c => c.charCodeAt(0))], {
-                                        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-                                    });
-                                    const url = window.URL.createObjectURL(blob);
-                                    const a = document.createElement('a');
-                                    a.href = url;
-                                    a.download = 'merged_tables.xlsx';
-                                    document.body.appendChild(a);
-                                    a.click();
-                                    window.URL.revokeObjectURL(url);
-                                    document.body.removeChild(a);
-                                } else {
-                                    alert('Error merging tables: ' + result.message);
-                                }
-                            } catch (error) {
-                                alert('Error merging tables: ' + error.message);
-                            }
-                        });
+                              const result = await response.json();
+                              if (result.status === 'success') {
+                                  const binaryString = atob(result.excel_data);
+                                  const bytes = new Uint8Array(binaryString.length);
+                                  for (let i = 0; i < binaryString.length; i++) {
+                                      bytes[i] = binaryString.charCodeAt(i);
+                                  }
+                                  const blob = new Blob([bytes], {
+                                      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                                  });
+                                  const url = window.URL.createObjectURL(blob);
+                                  const a = document.createElement('a');
+                                  a.href = url;
+                                  a.download = 'merged_tables.xlsx';
+                                  document.body.appendChild(a);
+                                  a.click();
+                                  window.URL.revokeObjectURL(url);
+                                  document.body.removeChild(a);
+                              } else {
+                                  alert('Error merging tables: ' + result.message);
+                              }
+                          } catch (error) {
+                              alert('Error merging tables: ' + error.message);
+                          }
+                      });
                     }
 
                     // Add event listeners for cell editing

@@ -91,9 +91,10 @@ async def extract_tables(file: UploadFile):
        }
    except Exception as e:
        logging.error(f"Error processing PDF: {str(e)}")
-       return {"status": "error", "message": f"Error processing PDF: {str(e)}"}
+       return {"status": "error", "message": "Error processing PDF"}
    finally:
-       os.unlink(tmp_path)
+        logging.info(f"Deleting temporary file: {tmp_path}")
+        os.unlink(tmp_path)
 
 @app.post("/update-table")
 async def update_table(
@@ -113,7 +114,7 @@ async def update_table(
             "message": "Table updated successfully",
         }
     except Exception as e:
-        return {"status": "error", "message": f"Error updating table: {str(e)}"}
+        return {"status": "error", "message": "Error updating table"}
 
 
 @app.post("/download-table")
@@ -134,47 +135,47 @@ async def download_table(table_data: Dict = Body(...)):
             "message": "Table data prepared for download",
         }
     except Exception as e:
+        logging.error(f"Error preparing table for download: {str(e)}")
         return {
             "status": "error",
-            "message": f"Error preparing table for download: {str(e)}",
+            "message": "Error preparing table for download",
         }
 
 
 @app.post("/merge-tables")
 async def merge_tables(tables_data: List[Dict] = Body(...)):
+    logging.info(f"Merging {len(tables_data)} tables")
+    logging.info(f"Received data: {tables_data}")
     try:
+        if not tables_data:
+            return {"status": "error", "message": "No table data received"}
+            
         output = BytesIO()
-
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             for i, table_data in enumerate(tables_data):
                 df = pd.DataFrame(table_data['data'])
-
+                logging.info(f"Processing table {i+1}, shape: {df.shape}")
+                
                 sheet_name = f"Table {i+1}"
                 df.to_excel(writer, sheet_name=sheet_name, index=False)
 
-                worksheet = writer.sheets[sheet_name]
-                for idx, col in enumerate(df.columns):
-                    max_length = max(
-                        df[col].astype(str).apply(len).max(), len(str(col))
-                    )
-                    worksheet.column_dimensions[chr(65 + idx)].width = max_length + 2
-
-        excel_data = output.getvalue()
-
+        excel_data = base64.b64encode(output.getvalue()).decode()
+        logging.info(f"Excel file size: {len(excel_data)} bytes")
+        
         return {
             "status": "success",
-            "excel_data": base64.b64encode(excel_data).decode(),
-            "message": f"Successfully merged {len(tables_data)} tables",
+            "excel_data": excel_data,
+            "message": f"Successfully merged {len(tables_data)} tables"
         }
     except Exception as e:
         logging.error(f"Error merging tables: {str(e)}")
-        return {"status": "error", "message": f"Error merging tables: {str(e)}"}
+        return {"status": "error", "message": "Error merging tables"}
 
 
-# if __name__ == "__main__":
-#     import uvicorn
-#     import os
-# 
-#     port = int(os.getenv("PORT", 8080))
-#     uvicorn.run(app, host="0.0.0.0", port=port)
+if __name__ == "__main__":
+    import uvicorn
+    import os
+
+    port = int(os.getenv("PORT", 8080))
+    uvicorn.run(app, host="0.0.0.0", port=port)
 

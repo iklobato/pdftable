@@ -5,3 +5,8 @@ tabula-py
 pandas
 openpyxl
 python-multipart
+opencv-python-headless
+pytesseract
+pdf2image
+tabulate
+numpy

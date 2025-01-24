@@ -1,3 +1,4 @@
+import logging
 from fastapi import FastAPI, UploadFile, Request, Body
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
@@ -11,6 +12,12 @@ from pathlib import Path
 from typing import List, Dict
 from datetime import datetime
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler()],
+)
+
 app = FastAPI(title="PDF Table Extractor")
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -19,14 +26,21 @@ templates = Jinja2Templates(directory="templates")
 UPLOAD_DIR = Path("static/uploads")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
+@app.get("/_ah/warmup")
+async def warmup():
+    return {"status": "warmed"}
+
+@app.get("/health")
+@app.get("/healthz")
+async def health():
+    return {"status": "ok"}
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
+    logging.info(f"Serving home page to {request.client}")
     return templates.TemplateResponse("index.html", {"request": request})
 
-
 def convert_table_to_dict(table: pd.DataFrame, table_id: str) -> Dict:
-    """Convert a pandas DataFrame to a dictionary with HTML and metadata."""
     return {
         'id': table_id,
         'html': table.to_html(
@@ -51,6 +65,7 @@ async def extract_tables(file: UploadFile):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     file_path = UPLOAD_DIR / f"{timestamp}_{file.filename}"
     with open(file_path, "wb") as buffer:
+        logging.info(f"Saving file to {file_path}")
         content = await file.read()
         buffer.write(content)
 
@@ -76,8 +91,10 @@ async def extract_tables(file: UploadFile):
             "file_id": timestamp,
         }
     except Exception as e:
+        logging.error(f"Error processing PDF: {str(e)}")
         return {"status": "error", "message": f"Error processing PDF: {str(e)}"}
     finally:
+        logging.info(f"Removing file {file_path}")
         os.remove(file_path)
 
 
@@ -104,6 +121,7 @@ async def update_table(
 
 @app.post("/download-table")
 async def download_table(table_data: Dict = Body(...)):
+    logging.info(f"Preparing table for download: {table_data['id']}")
     try:
         table = pd.DataFrame(table_data['data'])
 
@@ -152,14 +170,14 @@ async def merge_tables(tables_data: List[Dict] = Body(...)):
             "message": f"Successfully merged {len(tables_data)} tables",
         }
     except Exception as e:
+        logging.error(f"Error merging tables: {str(e)}")
         return {"status": "error", "message": f"Error merging tables: {str(e)}"}
 
 
-if __name__ == "__main__":
-    import uvicorn
-    import os
+# if __name__ == "__main__":
+#     import uvicorn
+#     import os
+# 
+#     port = int(os.getenv("PORT", 8080))
+#     uvicorn.run(app, host="0.0.0.0", port=port)
 
-    os.makedirs("static", exist_ok=True)
-
-    port = int(os.getenv("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)

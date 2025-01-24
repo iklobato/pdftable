@@ -4,6 +4,11 @@ FROM python:${PYTHON_VERSION}-slim as base
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
+# Install Java
+RUN apt-get update && apt-get install -y default-jre \
+    && rm -rf /var/lib/apt/lists/*
+ENV JAVA_HOME=/usr/lib/jvm/java-default-runtime
+
 WORKDIR /app
 
 ARG UID=10001
@@ -21,7 +26,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 RUN mkdir -p static/uploads templates \
     && chown -R appuser:appuser /app \
-    && chmod -R 755 static templates
+    && chmod -R 777 static/uploads \
+    && chmod -R 755 templates
 
 COPY . .
 COPY templates/index.html templates/

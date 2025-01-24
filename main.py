@@ -1,3 +1,4 @@
+import tempfile
 import logging
 from fastapi import FastAPI, UploadFile, Request, Body
 from fastapi.templating import Jinja2Templates
@@ -59,44 +60,40 @@ def convert_table_to_dict(table: pd.DataFrame, table_id: str) -> Dict:
         'num_columns': len(table.columns),
     }
 
-
 @app.post("/extract-tables")
 async def extract_tables(file: UploadFile):
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    file_path = UPLOAD_DIR / f"{timestamp}_{file.filename}"
-    with open(file_path, "wb") as buffer:
-        logging.info(f"Saving file to {file_path}")
-        content = await file.read()
-        buffer.write(content)
+   with tempfile.NamedTemporaryFile(delete=False) as tmp:
+       content = await file.read()
+       tmp.write(content)
+       tmp_path = tmp.name
 
-    try:
-        tables = read_pdf(
-            str(file_path),
-            pages='all',
-            multiple_tables=True,
-            guess=True,
-            pandas_options={'header': 'infer'},
-        )
+   try:
+       tables = read_pdf(
+           tmp_path,
+           pages='all',
+           multiple_tables=True,
+           guess=True,
+           pandas_options={'header': 'infer'},
+       )
 
-        tables_data = []
-        for i, table in enumerate(tables):
-            table = table.fillna('')
-            table_data = convert_table_to_dict(table, f'table-{i+1}')
-            tables_data.append(table_data)
+       tables_data = []
+       for i, table in enumerate(tables):
+           table = table.fillna('')
+           table_data = convert_table_to_dict(table, f'table-{i+1}')
+           tables_data.append(table_data)
 
-        return {
-            "status": "success",
-            "tables": tables_data,
-            "message": f"Successfully extracted {len(tables)} tables",
-            "file_id": timestamp,
-        }
-    except Exception as e:
-        logging.error(f"Error processing PDF: {str(e)}")
-        return {"status": "error", "message": f"Error processing PDF: {str(e)}"}
-    finally:
-        logging.info(f"Removing file {file_path}")
-        os.remove(file_path)
-
+       timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+       return {
+           "status": "success", 
+           "tables": tables_data,
+           "message": f"Successfully extracted {len(tables)} tables",
+           "file_id": timestamp,
+       }
+   except Exception as e:
+       logging.error(f"Error processing PDF: {str(e)}")
+       return {"status": "error", "message": f"Error processing PDF: {str(e)}"}
+   finally:
+       os.unlink(tmp_path)
 
 @app.post("/update-table")
 async def update_table(

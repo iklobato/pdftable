@@ -181,6 +181,17 @@
                         </div>
                     `;
 
+                    // Add merge all tables button at the top
+                    if (data.tables.length > 1) {
+                        resultsHTML += `
+                            <div class="mb-4">
+                                <button class="btn btn-primary" id="merge-all-btn">
+                                    <i class="fas fa-object-group me-1"></i>Merge All Tables to Excel
+                                </button>
+                            </div>
+                        `;
+                    }
+
                     data.tables.forEach((table, index) => {
                         resultsHTML += `
                             <div class="table-container" id="container-${table.id}">
@@ -234,6 +245,166 @@
 
                     results.innerHTML = resultsHTML;
                     
+                    // Add event listener for merge all tables button
+                    const mergeAllBtn = document.getElementById('merge-all-btn');
+                    if (mergeAllBtn) {
+                        mergeAllBtn.addEventListener('click', async function() {
+                            try {
+                                // Get data from all tables
+                                const allTables = Array.from(document.querySelectorAll('.table-container')).map(container => {
+                                    const table = container.querySelector('table');
+                                    const tableId = container.querySelector('.table-wrapper').dataset.tableId;
+                                    const headers = Array.from(table.querySelectorAll('th')).map(th => th.textContent.trim());
+                                    const rows = Array.from(table.querySelectorAll('tbody tr')).map(row => {
+                                        const cells = Array.from(row.querySelectorAll('td'));
+                                        return Object.fromEntries(
+                                            headers.map((header, index) => [header, cells[index].textContent.trim()])
+                                        );
+                                    });
+                                    return {
+                                        id: tableId,
+                                        data: rows
+                                    };
+                                });
+
+                                // Send request to merge tables
+                                const response = await fetch('/merge-tables', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json'
+                                    },
+                                    body: JSON.stringify(allTables)
+                                });
+
+                                const result = await response.json();
+                                if (result.status === 'success') {
+                                    // Create and trigger download of the merged Excel file
+                                    const blob = new Blob([Uint8Array.from(atob(result.excel_data), c => c.charCodeAt(0))], {
+                                        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                                    });
+                                    const url = window.URL.createObjectURL(blob);
+                                    const a = document.createElement('a');
+                                    a.href = url;
+                                    a.download = 'merged_tables.xlsx';
+                                    document.body.appendChild(a);
+                                    a.click();
+                                    window.URL.revokeObjectURL(url);
+                                    document.body.removeChild(a);
+                                } else {
+                                    alert('Error merging tables: ' + result.message);
+                                }
+                            } catch (error) {
+                                alert('Error merging tables: ' + error.message);
+                            }
+                        });
+                    }
+
+                    // Add event listeners for cell editing
+                    document.querySelectorAll('.editable-table td').forEach(cell => {
+                        cell.addEventListener('dblclick', function() {
+                            if (!this.isContentEditable) {
+                                const originalValue = this.textContent;
+                                this.contentEditable = true;
+                                this.focus();
+                                
+                                // Handle Enter key to save changes
+                                this.addEventListener('keydown', function(e) {
+                                    if (e.key === 'Enter' && !e.shiftKey) {
+                                        e.preventDefault();
+                                        this.blur();
+                                    }
+                                });
+                                
+                                // Handle blur to save changes
+                                this.addEventListener('blur', function() {
+                                    this.contentEditable = false;
+                                    if (this.textContent.trim() === '') {
+                                        this.textContent = originalValue;
+                                    }
+                                }, { once: true });
+                            }
+                        });
+                    });
+                    
+                    // Add event listeners for table operations
+                    document.querySelectorAll('.add-row-btn').forEach(btn => {
+                        btn.addEventListener('click', function() {
+                            const tableId = this.dataset.tableId;
+                            const container = document.getElementById(`container-${tableId}`);
+                            const table = container.querySelector('table');
+                            const tbody = table.querySelector('tbody');
+                            const headers = Array.from(table.querySelectorAll('th')).map(th => th.textContent.trim());
+                            
+                            // Create new row with empty cells
+                            const newRow = document.createElement('tr');
+                            headers.forEach(() => {
+                                const td = document.createElement('td');
+                                td.contentEditable = true;
+                                newRow.appendChild(td);
+                            });
+                            tbody.appendChild(newRow);
+                        });
+                    });
+
+                    document.querySelectorAll('.add-column-btn').forEach(btn => {
+                        btn.addEventListener('click', function() {
+                            const tableId = this.dataset.tableId;
+                            const container = document.getElementById(`container-${tableId}`);
+                            const table = container.querySelector('table');
+                            const thead = table.querySelector('thead');
+                            const tbody = table.querySelector('tbody');
+                            
+                            // Add header cell
+                            const th = document.createElement('th');
+                            th.textContent = `Column ${thead.querySelector('tr').children.length + 1}`;
+                            thead.querySelector('tr').appendChild(th);
+                            
+                            // Add empty cells to each row
+                            tbody.querySelectorAll('tr').forEach(row => {
+                                const td = document.createElement('td');
+                                td.contentEditable = true;
+                                row.appendChild(td);
+                            });
+                        });
+                    });
+
+                    document.querySelectorAll('.delete-row-btn').forEach(btn => {
+                        btn.addEventListener('click', function() {
+                            const tableId = this.dataset.tableId;
+                            const container = document.getElementById(`container-${tableId}`);
+                            const tbody = container.querySelector('table tbody');
+                            const rows = tbody.querySelectorAll('tr');
+                            
+                            if (rows.length > 1) {
+                                tbody.removeChild(rows[rows.length - 1]);
+                            } else {
+                                alert('Cannot delete the last row');
+                            }
+                        });
+                    });
+
+                    document.querySelectorAll('.delete-column-btn').forEach(btn => {
+                        btn.addEventListener('click', function() {
+                            const tableId = this.dataset.tableId;
+                            const container = document.getElementById(`container-${tableId}`);
+                            const table = container.querySelector('table');
+                            const thead = table.querySelector('thead tr');
+                            const tbody = table.querySelector('tbody');
+                            
+                            if (thead.children.length > 1) {
+                                // Remove last header cell
+                                thead.removeChild(thead.lastElementChild);
+                                
+                                // Remove last cell from each row
+                                tbody.querySelectorAll('tr').forEach(row => {
+                                    row.removeChild(row.lastElementChild);
+                                });
+                            } else {
+                                alert('Cannot delete the last column');
+                            }
+                        });
+                    });
+
                     // Add event listeners for table editing
                     document.querySelectorAll('.edit-table-btn').forEach(btn => {
                         btn.addEventListener('click', function() {

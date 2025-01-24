@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Table Extractor</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .drag-area {
+            border: 2px dashed #0d6efd;
+            border-radius: 5px;
+            padding: 30px;
+            text-align: center;
+            background: #f8f9fa;
+            transition: all 0.3s ease;
+        }
+        .drag-area.active {
+            border-color: #198754;
+            background: #e8f5e9;
+        }
+        .table-container {
+            margin-top: 20px;
+            padding: 20px;
+            border-radius: 5px;
+            background: #fff;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        .loading {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255,255,255,0.8);
+            z-index: 9999;
+        }
+        .loading-content {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+        }
+        .editable-table td {
+            position: relative;
+            cursor: pointer;
+        }
+        .editable-table td:hover::after {
+            content: '✎';
+            position: absolute;
+            right: 5px;
+            color: #0d6efd;
+        }
+        .edit-controls {
+            margin-top: 10px;
+            display: flex;
+            gap: 10px;
+        }
+        .table-editor {
+            display: none;
+            margin-top: 10px;
+        }
+        .table-editor.active {
+            display: block;
+        }
+    </style>
+</head>
+<body class="bg-light">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-table me-2"></i>
+                PDF Table Extractor
+            </a>
+        </div>
+    </nav>
+
+    <div class="container my-5">
+        <div class="row justify-content-center">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title mb-4">Extract Tables from PDF</h5>
+                        <div class="drag-area" id="drop-zone">
+                            <i class="fas fa-cloud-upload-alt fa-3x text-primary mb-3"></i>
+                            <h4>Drag & Drop PDF file here</h4>
+                            <p>or</p>
+                            <button class="btn btn-primary" onclick="document.getElementById('file-input').click()">
+                                Browse File
+                            </button>
+                            <input type="file" id="file-input" hidden accept=".pdf">
+                        </div>
+                    </div>
+                </div>
+
+                <div id="results" class="mt-4"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="loading" id="loading">
+        <div class="loading-content">
+            <div class="spinner-border text-primary mb-3" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <h5>Processing PDF...</h5>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const loading = document.getElementById('loading');
+        const results = document.getElementById('results');
+
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, preventDefaults, false);
+            document.body.addEventListener(eventName, preventDefaults, false);
+        });
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, highlight, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, unhighlight, false);
+        });
+
+        dropZone.addEventListener('drop', handleDrop, false);
+        fileInput.addEventListener('change', handleFiles, false);
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        function highlight(e) {
+            dropZone.classList.add('active');
+        }
+
+        function unhighlight(e) {
+            dropZone.classList.remove('active');
+        }
+
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            handleFiles({ target: { files: files } });
+        }
+
+        function handleFiles(e) {
+            const file = e.target.files[0];
+            if (file && file.type === 'application/pdf') {
+                uploadFile(file);
+            } else {
+                alert('Please upload a PDF file');
+            }
+        }
+
+        async function uploadFile(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            loading.style.display = 'block';
+            results.innerHTML = '';
+
+            try {
+                const response = await fetch('/extract-tables', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    let resultsHTML = `
+                        <div class="alert alert-success">
+                            <i class="fas fa-check-circle me-2"></i>${data.message}
+                        </div>
+                    `;
+
+                    data.tables.forEach((table, index) => {
+                        resultsHTML += `
+                            <div class="table-container" id="container-${table.id}">
+                                <h5 class="mb-3">Table ${index + 1}</h5>
+                                <div class="table-responsive table-wrapper" data-table-id="${table.id}">
+                                    ${table.html}
+                                </div>
+                                <div class="text-muted mt-2">
+                                    <small>${table.rows} rows × ${table.num_columns} columns</small>
+                                </div>
+                                <div class="edit-controls">
+                                    <button class="btn btn-primary btn-sm edit-table-btn" data-table-id="${table.id}">
+                                        <i class="fas fa-edit me-1"></i>Edit Table
+                                    </button>
+                                    <button class="btn btn-success btn-sm save-table-btn" style="display:none" data-table-id="${table.id}">
+                                        <i class="fas fa-save me-1"></i>Save Changes
+                                    </button>
+                                    <button class="btn btn-danger btn-sm cancel-edit-btn" style="display:none" data-table-id="${table.id}">
+                                        <i class="fas fa-times me-1"></i>Cancel
+                                    </button>
+                                    <div class="btn-group">
+                                        <button class="btn btn-info btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                                            <i class="fas fa-download me-1"></i>Download
+                                        </button>
+                                        <ul class="dropdown-menu">
+                                            <li><a class="dropdown-item download-btn" data-format="csv" data-table-id="${table.id}" href="#">CSV</a></li>
+                                            <li><a class="dropdown-item download-btn" data-format="excel" data-table-id="${table.id}" href="#">Excel</a></li>
+                                            <li><a class="dropdown-item download-btn" data-format="json" data-table-id="${table.id}" href="#">JSON</a></li>
+                                        </ul>
+                                    </div>
+                                </div>
+                                <div class="table-operations" style="display:none" data-table-id="${table.id}">
+                                    <div class="btn-group mt-2">
+                                        <button class="btn btn-outline-primary btn-sm add-row-btn" data-table-id="${table.id}">
+                                            <i class="fas fa-plus me-1"></i>Add Row
+                                        </button>
+                                        <button class="btn btn-outline-primary btn-sm add-column-btn" data-table-id="${table.id}">
+                                            <i class="fas fa-plus me-1"></i>Add Column
+                                        </button>
+                                        <button class="btn btn-outline-danger btn-sm delete-row-btn" data-table-id="${table.id}">
+                                            <i class="fas fa-minus me-1"></i>Delete Row
+                                        </button>
+                                        <button class="btn btn-outline-danger btn-sm delete-column-btn" data-table-id="${table.id}">
+                                            <i class="fas fa-minus me-1"></i>Delete Column
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    });
+
+                    results.innerHTML = resultsHTML;
+                    
+                    // Add event listeners for table editing
+                    document.querySelectorAll('.edit-table-btn').forEach(btn => {
+                        btn.addEventListener('click', function() {
+                            const tableId = this.dataset.tableId;
+                            const container = document.getElementById(`container-${tableId}`);
+                            const table = container.querySelector('table');
+                            
+                            // Make cells editable
+                            table.querySelectorAll('td').forEach(cell => {
+                                cell.contentEditable = true;
+                                cell.dataset.originalValue = cell.textContent;
+                            });
+                            
+                            // Show/hide buttons
+                            container.querySelector('.edit-table-btn').style.display = 'none';
+                            container.querySelector('.save-table-btn').style.display = 'inline-block';
+                            container.querySelector('.cancel-edit-btn').style.display = 'inline-block';
+                            container.querySelector('.table-operations').style.display = 'block';
+                        });
+                    });
+
+                    document.querySelectorAll('.save-table-btn').forEach(btn => {
+                        btn.addEventListener('click', async function() {
+                            const tableId = this.dataset.tableId;
+                            const container = document.getElementById(`container-${tableId}`);
+                            const table = container.querySelector('table');
+                            
+                            // Get table data
+                            const headers = Array.from(table.querySelectorAll('th')).map(th => th.textContent.trim());
+                            const rows = Array.from(table.querySelectorAll('tbody tr')).map(row => {
+                                const cells = Array.from(row.querySelectorAll('td'));
+                                return Object.fromEntries(
+                                    headers.map((header, index) => [header, cells[index].textContent.trim()])
+                                );
+                            });
+
+                            try {
+                                const response = await fetch('/update-table', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                    },
+                                    body: JSON.stringify({
+                                        id: tableId,
+                                        data: rows
+                                    })
+                                });
+                                
+                                const result = await response.json();
+                                if (result.status === 'success') {
+                                    // Update table with new HTML
+                                    container.querySelector('.table-wrapper').innerHTML = result.table.html;
+                                    
+                                    // Reset edit state
+                                    container.querySelector('.edit-table-btn').style.display = 'inline-block';
+                                    container.querySelector('.save-table-btn').style.display = 'none';
+                                    container.querySelector('.cancel-edit-btn').style.display = 'none';
+                                } else {
+                                    alert('Error saving changes: ' + result.message);
+                                }
+                            } catch (error) {
+                                alert('Error saving changes: ' + error.message);
+                            }
+                        });
+                    });
+
+                    document.querySelectorAll('.cancel-edit-btn').forEach(btn => {
+                        btn.addEventListener('click', function() {
+                            const tableId = this.dataset.tableId;
+                            const container = document.getElementById(`container-${tableId}`);
+                            const table = container.querySelector('table');
+                            
+                            // Restore original values
+                            table.querySelectorAll('td').forEach(cell => {
+                                cell.textContent = cell.dataset.originalValue;
+                                cell.contentEditable = false;
+                                delete cell.dataset.originalValue;
+                            });
+                            
+                            // Reset buttons
+                            container.querySelector('.edit-table-btn').style.display = 'inline-block';
+                            container.querySelector('.save-table-btn').style.display = 'none';
+                            container.querySelector('.cancel-edit-btn').style.display = 'none';
+                            container.querySelector('.table-operations').style.display = 'none';
+                        });
+                    });
+
+                    // Add event listeners for table operations
+                    document.querySelectorAll('.add-row-btn').forEach(btn => {
+                        btn.addEventListener('click', function() {
+                            const tableId = this.dataset.tableId;
+                            const table = document.querySelector(`#container-${tableId} table`);
+                            const headers = Array.from(table.querySelectorAll('th')).map(th => th.textContent.trim());
+                            
+                            // Create new row with empty cells
+                            const newRow = document.createElement('tr');
+                            headers.forEach(() => {
+                                const cell = document.createElement('td');
+                                cell.contentEditable = true;
+                                cell.textContent = '';
+                                newRow.appendChild(cell);
+                            });
+                            
+                            table.querySelector('tbody').appendChild(newRow);
+                        });
+                    });
+
+                    document.querySelectorAll('.delete-row-btn').forEach(btn => {
+                        btn.addEventListener('click', function() {
+                            const tableId = this.dataset.tableId;
+                            const table = document.querySelector(`#container-${tableId} table`);
+                            const tbody = table.querySelector('tbody');
+                            if (tbody.lastElementChild) {
+                                tbody.removeChild(tbody.lastElementChild);
+                            }
+                        });
+                    });
+
+                    document.querySelectorAll('.add-column-btn').forEach(btn => {
+                        btn.addEventListener('click', function() {
+                            const tableId = this.dataset.tableId;
+                            const table = document.querySelector(`#container-${tableId} table`);
+                            
+                            // Add header
+                            const newHeader = document.createElement('th');
+                            newHeader.textContent = `New Column ${table.querySelectorAll('th').length + 1}`;
+                            table.querySelector('thead tr').appendChild(newHeader);
+                            
+                            // Add cells
+                            table.querySelectorAll('tbody tr').forEach(row => {
+                                const cell = document.createElement('td');
+                                cell.contentEditable = true;
+                                cell.textContent = '';
+                                row.appendChild(cell);
+                            });
+                        });
+                    });
+
+                    document.querySelectorAll('.delete-column-btn').forEach(btn => {
+                        btn.addEventListener('click', function() {
+                            const tableId = this.dataset.tableId;
+                            const table = document.querySelector(`#container-${tableId} table`);
+                            const lastColIndex = table.rows[0].cells.length - 1;
+                            
+                            if (lastColIndex > 0) {  // Keep at least one column
+                                Array.from(table.rows).forEach(row => {
+                                    row.deleteCell(lastColIndex);
+                                });
+                            }
+                        });
+                    });
+
+                    document.querySelectorAll('.download-btn').forEach(btn => {
+                        btn.addEventListener('click', async function(e) {
+                            e.preventDefault();
+                            const tableId = this.dataset.tableId;
+                            const format = this.dataset.format;
+                            const container = document.getElementById(`container-${tableId}`);
+                            const table = container.querySelector('table');
+                            
+                            // Get table data
+                            const headers = Array.from(table.querySelectorAll('th')).map(th => th.textContent.trim());
+                            const rows = Array.from(table.querySelectorAll('tbody tr')).map(row => {
+                                const cells = Array.from(row.querySelectorAll('td'));
+                                return Object.fromEntries(
+                                    headers.map((header, index) => [header, cells[index].textContent.trim()])
+                                );
+                            });
+
+                            try {
+                                const response = await fetch('/download-table', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                    },
+                                    body: JSON.stringify({
+                                        id: tableId,
+                                        data: rows
+                                    })
+                                });
+                                
+                                const result = await response.json();
+                                if (result.status === 'success') {
+                                    // Create and trigger download
+                                    const blob = new Blob([result.formats[format]], { type: 'text/plain' });
+                                    const url = window.URL.createObjectURL(blob);
+                                    const a = document.createElement('a');
+                                    a.style.display = 'none';
+                                    a.href = url;
+                                    a.download = `table-${tableId}.${format}`;
+                                    document.body.appendChild(a);
+                                    a.click();
+                                    window.URL.revokeObjectURL(url);
+                                    document.body.removeChild(a);
+                                } else {
+                                    alert('Error downloading table: ' + result.message);
+                                }
+                            } catch (error) {
+                                alert('Error downloading table: ' + error.message);
+                            }
+                        });
+                    });
+
+                    results.innerHTML = resultsHTML;
+                } else {
+                    results.innerHTML = `
+                        <div class="alert alert-danger">
+                            <i class="fas fa-exclamation-circle me-2"></i>${data.message}
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                results.innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-circle me-2"></i>Error processing the file
+                    </div>
+                `;
+            } finally {
+                loading.style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html>
